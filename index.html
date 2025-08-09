@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Laura‑Simulator V4 — Shitpost Edition</title>
+  <meta name="theme-color" content="#0f1220" />
+  <style>
+    :root{
+      --bg:#0f1220;--panel:#161a2b;--ink:#e8ecf1;--muted:#9aa3b2;--line:#242846;
+      --good:#37e39f;--bad:#ff7a90;--accent:#86e1ff;--focus:#5fa8ff;
+      --tap:56px; /* min tappable height */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    html{color-scheme:dark}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:radial-gradient(1200px 600px at 20% -10%,#1a2040 0,#0f1220 60%),var(--bg);color:var(--ink)}
+    /* Top status bar (mobile-first) */
+    .status{
+      position:sticky;top:0;z-index:10;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);backdrop-filter:saturate(140%) blur(6px);background:#0f1220cc
+    }
+    .s{display:grid;gap:4px}
+    .s .label{font-size:12px;color:var(--muted)}
+    .meter{height:10px;border-radius:999px;background:#0c0f1f;border:1px solid var(--line);overflow:hidden}
+    .fill{height:100%;width:0%;transition:width .2s}
+    .good{background:linear-gradient(90deg,#39c78f,var(--good))}
+    .bad{background:linear-gradient(90deg,#ff6480,var(--bad))}
+    .accent{background:linear-gradient(90deg,#3da2ff,var(--accent))}
+    .score{display:flex;align-items:center;gap:8px}
+    .score b{font-size:20px}
+    .toolbar{display:flex;gap:8px;justify-content:flex-end}
+    .btn{appearance:none;border:1px solid var(--line);background:#121633;color:var(--ink);border-radius:12px;padding:10px 14px;cursor:pointer}
+    .btn.ghost{background:transparent}
+    .btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+    /* Layout */
+    .wrap{max-width:980px;margin:0 auto;padding:12px;display:grid;gap:12px}
+    .grid{display:grid;gap:12px}
+    /* Mobile: stack. Desktop: two columns */
+    @media(min-width:900px){
+      .grid{grid-template-columns:360px 1fr}
+    }
+
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+
+    /* Avatar */
+    .avatar{display:grid;place-items:center;position:relative;overflow:hidden}
+    .face{width:180px;height:180px;border-radius:50%;position:relative;background:radial-gradient(circle at 40% 35%,#ffdfdf,#ffc6c6 58%,#f7a6a6 100%);border:4px solid #35222a;box-shadow:0 10px 40px #0006}
+    .eye{width:18px;height:18px;background:#000;border-radius:50%;position:absolute;top:62px}
+    .eye.left{left:46px}.eye.right{right:46px}
+    .mouth{width:72px;height:26px;border-radius:0 0 40px 40px;background:#7b1e2a;position:absolute;bottom:56px;left:50%;transform:translateX(-50%)}
+    .mouth.cry{animation:cry .8s infinite}
+    @keyframes cry{0%{height:26px}50%{height:42px;background:#8c2030}100%{height:26px}}
+    .bubble{position:absolute;bottom:10px;left:10px;background:#2a2f55;border:1px solid #3a4080;padding:8px 10px;border-radius:10px;max-width:280px}
+    .hidden{opacity:0}
+    .confetti{pointer-events:none;position:absolute;inset:0}
+
+    /* Card with choices */
+    .card h2{margin:0 0 8px 0}
+    .choices{display:grid;gap:10px}
+    .choices button{min-height:var(--tap);background:#0c1024;color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-align:left;cursor:pointer}
+    .choices button:active{transform:translateY(1px)}
+    .hint{color:var(--muted);font-size:12px}
+
+    /* Event feed */
+    .feed{max-height:220px;overflow:auto}
+    .feed ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+    .feed li{font-size:14px;color:#d7dbee}
+
+    /* Bottom actions */
+    .bottomBar{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;background:#0f1220cc;border-top:1px solid var(--line);backdrop-filter:saturate(140%) blur(6px)}
+    .meta{color:var(--muted);font-size:14px}
+
+    /* Dialogs */
+    dialog{background:#0f1220;color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:16px;max-width:640px}
+    dialog::backdrop{background:#0006}
+
+    /* Fun effects */
+    .spin{animation:spin 0.6s linear}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .shake{animation:shake .18s linear}
+    @keyframes shake{0%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}100%{transform:translateX(0)}}
+
+    /* Reduce motion */
+    @media (prefers-reduced-motion:reduce){
+      .fill{transition:none}
+      .mouth.cry{animation:none}
+      .spin,.shake{animation:none}
+    }
+  </style>
+</head>
+<body>
+  <!-- STATUS BAR -->
+  <header class="status" role="region" aria-label="Statusleiste">
+    <div class="s score">
+      <span>Score</span>
+      <b id="scoreVal">0</b>
+    </div>
+    <div class="toolbar" role="toolbar" aria-label="Einstellungen">
+      <button id="soundBtn" class="btn ghost" aria-pressed="false">🔈 Sound</button>
+      <button id="hapticsBtn" class="btn ghost" aria-pressed="true">📳 Haptics</button>
+      <button id="helpBtn" class="btn ghost">❓ Hilfe</button>
+    </div>
+    <div class="s">
+      <div class="label">Combo</div>
+      <div class="meter" aria-hidden="true"><div id="comboBar" class="fill good" style="width:0%"></div></div>
+      <div class="label" id="comboVal" aria-live="polite">x1</div>
+    </div>
+    <div class="s">
+      <div class="label">Chaos</div>
+      <div class="meter" aria-hidden="true"><div id="chaosBar" class="fill bad" style="width:0%"></div></div>
+      <div class="label" id="chaosVal" aria-live="polite">0</div>
+    </div>
+    <div class="s">
+      <div class="label">Zeit</div>
+      <div class="meter" aria-hidden="true"><div id="timeBar" class="fill accent" style="width:100%"></div></div>
+      <div class="label" id="timeVal">03:00</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="grid" aria-label="Spielbereich">
+      <!-- AVATAR / VFX -->
+      <div class="panel avatar" id="avatarPanel">
+        <div class="face" aria-hidden="true">
+          <div class="eye left"></div>
+          <div class="eye right"></div>
+          <div class="mouth" id="mouth"></div>
+        </div>
+        <div id="bubble" class="bubble hidden">NEIN!!</div>
+        <div id="confetti" class="confetti"></div>
+      </div>
+
+      <!-- EVENT CARD -->
+      <div class="panel card" id="cardPanel">
+        <h2 id="prompt">—</h2>
+        <div id="choices" class="choices" role="group" aria-label="Antworten"></div>
+        <small class="hint">Shortcuts: <b>1</b>/<b>2</b>/<b>3</b></small>
+      </div>
+    </section>
+
+    <!-- FEED -->
+    <section class="panel feed" aria-label="Feed">
+      <h3 style="margin:0 0 8px 0">Feed</h3>
+      <ul id="logList"></ul>
+    </section>
+  </main>
+
+  <!-- BOTTOM BAR -->
+  <footer class="bottomBar">
+    <button id="restartBtn" class="btn">🔁 Neustart</button>
+    <div class="meta">Bestzeit: <span id="bestTime">00:00</span> · Highscore: <span id="bestScore">0</span></div>
+  </footer>
+
+  <!-- DIALOGS -->
+  <dialog id="help">
+    <h2>Was ist das?</h2>
+    <p>Dies ist die <b>Shitpost Edition</b>. Alles ist albern on purpose. Hol Punkte, vermeide Chaos, lach über den Unsinn.</p>
+    <ul>
+      <li>Große Buttons = Handy‑freundlich</li>
+      <li>Score hoch, Chaos niedrig. Chaos ≥ 100 ⇒ Boss‑QTE.</li>
+      <li>Tippen oder 1/2/3 drücken. Sound/Haptics oben togglen.</li>
+    </ul>
+    <form method="dialog"><button class="btn">Okay</button></form>
+  </dialog>
+
+  <dialog id="boss">
+    <h2>🔥 ULTRA‑MELTDOWN (QTE)</h2>
+    <p id="bossText">Drücke die Sequenz bevor die Leiste voll ist!</p>
+    <div class="meter" style="margin:8px 0 12px"><div id="bossRage" class="fill bad" style="width:0%"></div></div>
+    <div class="sequence" id="seq"></div>
+    <div class="keys" aria-hidden="true" style="margin-top:8px"><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd><kbd>;</kbd></div>
+    <form method="dialog"><button id="bossGiveUp" class="btn ghost">Ich nehm die L</button></form>
+  </dialog>
+
+  <dialog id="end">
+    <h2 id="endTitle">—</h2>
+    <p id="endText">—</p>
+    <form method="dialog"><button id="playAgain" class="btn">Nochmal</button></form>
+  </dialog>
+
+  <script>
+  // ====== Minimal, mobile-first rewrite of V3 -> V4 with cleaner structure ======
+  const $ = (s)=>document.querySelector(s);
+  const ui = {
+    scoreVal: $('#scoreVal'), comboBar: $('#comboBar'), comboVal: $('#comboVal'),
+    chaosBar: $('#chaosBar'), chaosVal: $('#chaosVal'), timeBar: $('#timeBar'), timeVal: $('#timeVal'),
+    prompt: $('#prompt'), choices: $('#choices'), logList: $('#logList'),
+    mouth: $('#mouth'), bubble: $('#bubble'), confetti: $('#confetti'), avatarPanel: $('#avatarPanel'),
+    restartBtn: $('#restartBtn'), bestTime: $('#bestTime'), bestScore: $('#bestScore'),
+    soundBtn: $('#soundBtn'), hapticsBtn: $('#hapticsBtn'), helpBtn: $('#helpBtn'),
+    help: $('#help'), end: $('#end'), endTitle: $('#endTitle'), endText: $('#endText'), playAgain: $('#playAgain'),
+    boss: $('#boss'), bossText: $('#bossText'), bossRage: $('#bossRage'), seq: $('#seq'), bossGiveUp: $('#bossGiveUp'),
+  };
+  const STATE = {score:0, combo:1, comboProg:0, chaos:0, time:180, alive:true, tick:null, started:0,
+                 sound:false, haptics:true, audio:null, boss:false};
+
+  // --- WebAudio ---
+  function initAudio(){ if(STATE.audio) return; const ctx=new (window.AudioContext||window.webkitAudioContext)(); const g=ctx.createGain(); g.gain.value=0.22; g.connect(ctx.destination); STATE.audio={ctx,master:g}; }
+  function tone(f=440,d=0.12,t='sine',v=0.35){ if(!STATE.sound||!STATE.audio) return; const {ctx,master}=STATE.audio; const o=ctx.createOscillator(); const g=ctx.createGain(); o.type=t;o.frequency.value=f;g.gain.value=0;o.connect(g).connect(master); const n=ctx.currentTime; g.gain.linearRampToValueAtTime(v,n+0.01); g.gain.exponentialRampToValueAtTime(0.0001,n+d); o.start(n); o.stop(n+d+0.02); }
+  const sfx={ click:()=>tone(760,0.08,'square',0.25), good:()=>{tone(620,0.1,'triangle',0.3);setTimeout(()=>tone(780,0.12,'triangle',0.25),90)}, bad:()=>tone(220,0.2,'sawtooth',0.35), cry:()=>{tone(320,0.14,'triangle',0.3); setTimeout(()=>tone(260,0.16,'sawtooth',0.28),90)}, boss:()=>{tone(130,0.25,'sawtooth',0.4); setTimeout(()=>tone(230,0.2,'square',0.35),200)}, win:()=>{tone(660,0.12,'triangle',0.35); setTimeout(()=>tone(880,0.16,'triangle',0.35),120);}, lose:()=>{tone(200,0.22,'sawtooth',0.4); setTimeout(()=>tone(160,0.3,'sawtooth',0.35),140)}};
+
+  // --- Haptics ---
+  const buzz = (p=[20])=>{ if(!STATE.haptics) return; if('vibrate' in navigator) navigator.vibrate(p); };
+
+  // --- Helpers ---
+  const fmt=(s)=>{const m=String(Math.floor(s/60)).padStart(2,'0');const ss=String(s%60).padStart(2,'0');return `${m}:${ss}`};
+  function log(t){ const li=document.createElement('li'); li.innerHTML=t; ui.logList.prepend(li); }
+  function bubble(txt,ms=1100){ ui.bubble.textContent=txt; ui.bubble.classList.remove('hidden'); setTimeout(()=>ui.bubble.classList.add('hidden'),ms); }
+  function cry(on){ ui.mouth.classList.toggle('cry',on); }
+  function fxConfetti(){ ui.confetti.innerHTML=''; for(let i=0;i<16;i++){ const sp=document.createElement('span'); sp.style.position='absolute'; sp.style.left=Math.random()*100+'%'; sp.style.top='-8px'; sp.style.fontSize=(12+Math.random()*12)+'px'; sp.textContent=['✨','🎉','🧃','🧸','🍪'][Math.floor(Math.random()*5)]; ui.confetti.appendChild(sp); const y=120+Math.random()*220; sp.animate([{transform:'translateY(0)'},{transform:`translateY(${y}px)`}],{duration:800+Math.random()*600,fill:'forwards'}); } }
+  function shake(){ ui.avatarPanel.classList.add('shake'); setTimeout(()=>ui.avatarPanel.classList.remove('shake'),200); }
+  function spin(){ ui.cardPanel?.classList?.add('spin'); setTimeout(()=>ui.cardPanel?.classList?.remove('spin'),600); }
+
+  // --- Scenarios (short, silly) ---
+  const Z = ["NEIN!!","FALSCH!!","IHHH","Das ist illegal!","MÖCHTE JETZT!","Cringe.","Langweilig."];
+  const scenes = [
+    S('Du reichst eine Banane. Laura wollte Quetschbanane aus der goldenen Schüssel.', ['Mit Gabel zerquetschen (ASMR)','Goldene Schüssel improvisieren','Banane dabben lassen'], ['asmr','pretend','dab']),
+    S('Musikzeit. Es läuft NICHT Babyhai‑Remix.', ['Beatbox‑Remix','Bluetooth mit Toaster','Ente als Mikro'], ['remix','toaster','ente']),
+    S('Du baust Turm. Laura = Godzilla.', ['Noch größer bauen','Papier‑Krone verleihen','UNO Karte +4'], ['bigturm','krone','uno']),
+    S('Falsche Sockenfarbe.', ['Socken inside‑out','Mix & Match Fashion','Socken‑Rap'], ['insideout','mixmatch','rap']),
+    S('Snack will „rund aber eckig“ sein.', ['Keks rund schnitzen','Eckig rund denken','Keks in Pixeln'], ['craft','philosophy','pixels']),
+    S('Sie will den Lichtschalter 47× drücken.', ['Speedrun 47','Schalter‑Moderator','Dem Stromzähler winken'], ['speedrun','moderator','strom'])
+  ];
+  function S(p, choices, ids){ return {p, c: choices.map((t,i)=>({t, tag: ids[i]}))}; }
+
+  const eff = {
+    asmr:{score:60, chaos:8, combo:1, say:'*quatsch quatsch*'},
+    pretend:{score:40, chaos:12, combo:1, say:'golden vibes'},
+    dab:{score:70, chaos:15, combo:2, say:'she dabbed 💀'},
+    remix:{score:55, chaos:10, combo:1, say:'DNB Babyhai 🔥'},
+    toaster:{score:30, chaos:20, combo:0, say:'Toaster sagt brrrr'},
+    ente:{score:45, chaos:9, combo:1, say:'quack autotune'},
+    bigturm:{score:65, chaos:14, combo:2, say:'bigger = better'},
+    krone:{score:80, chaos:12, combo:2, say:'Ihre Majestät'},
+    uno:{score:20, chaos:25, combo:0, say:'+4 auf dich'},
+    insideout:{score:35, chaos:9, combo:1, say:'lifehack?'},
+    mixmatch:{score:70, chaos:10, combo:2, say:'fit check'},
+    rap:{score:55, chaos:18, combo:1, say:'yo socke'},
+    craft:{score:50, chaos:12, combo:1, say:'art attack'},
+    philosophy:{score:42, chaos:8, combo:1, say:'Form ist Gefühl'},
+    pixels:{score:66, chaos:16, combo:2, say:'minecraft snack'},
+    speedrun:{score:77, chaos:19, combo:2, say:'WR maybe'},
+    moderator:{score:48, chaos:11, combo:1, say:'und AUS'},
+    strom:{score:25, chaos:21, combo:0, say:'kwh moment'},
+  };
+
+  function update(){
+    ui.scoreVal.textContent = STATE.score;
+    ui.comboVal.textContent = 'x'+STATE.combo;
+    ui.comboBar.style.width = STATE.comboProg+'%';
+    ui.chaosBar.style.width = STATE.chaos+'%';
+    ui.chaosVal.textContent = Math.round(STATE.chaos);
+    ui.timeBar.style.width = (STATE.time/180*100)+'%';
+    ui.timeVal.textContent = fmt(STATE.time);
+  }
+
+  function renderScene(){
+    const sc = scenes[Math.floor(Math.random()*scenes.length)];
+    ui.prompt.textContent = sc.p;
+    ui.choices.innerHTML = '';
+    sc.c.forEach((c, i)=>{
+      const b=document.createElement('button');
+      b.className='btn';
+      b.innerHTML = `<b>${i+1}.</b> ${c.t}`;
+      b.addEventListener('click', ()=> choose(c.tag, c.t));
+      ui.choices.appendChild(b);
+    });
+  }
+
+  function choose(tag, text){
+    if(!STATE.alive||STATE.boss) return;
+    sfx.click(); buzz([12]);
+    cry(true); sfx.cry(); bubble(Z[Math.floor(Math.random()*Z.length)]); shake();
+    log(`Laura: 😭 <small>(du: „${text}“)</small>`);
+    setTimeout(()=>{
+      cry(false);
+      const e = eff[tag];
+      const mult = STATE.combo;
+      const gain = Math.max(0, e.score*mult);
+      STATE.score += gain;
+      STATE.chaos = Math.min(100, STATE.chaos + e.chaos);
+      if (e.combo>0){ STATE.combo=Math.min(9,STATE.combo+e.combo); STATE.comboProg=Math.min(100, STATE.comboProg+20); sfx.good(); bubble(e.say,900); fxConfetti(); spin(); }
+      else { STATE.combo=Math.max(1, Math.floor(STATE.combo*0.6)); STATE.comboProg=Math.max(0, STATE.comboProg-25); sfx.bad(); bubble('lol nope',700); }
+      update();
+      if (STATE.chaos>=100) startBoss(); else renderScene();
+    }, 520);
+  }
+
+  function tick(){ if(!STATE.alive) return; STATE.time--; STATE.comboProg=Math.max(0, STATE.comboProg-2); if(STATE.comboProg===0 && STATE.combo>1) STATE.combo--; if(STATE.time%9===0) STATE.chaos=Math.min(100, STATE.chaos+1); update(); if(STATE.time<=0) end(true); }
+
+  // --- Boss (QTE) ---
+  const Q = ['J','K','L',';'];
+  function startBoss(){
+    STATE.boss=true; sfx.boss(); buzz([60,30,60]); ui.boss.showModal();
+    let rage=0; ui.bossRage.style.width='0%';
+    const seq = Array.from({length:5+Math.floor(Math.random()*3)}, ()=> Q[Math.floor(Math.random()*Q.length)]);
+    ui.seq.innerHTML=''; seq.forEach(k=>{ const d=document.createElement('div'); d.className='box'; d.textContent=k; ui.seq.appendChild(d); });
+    let idx=0; const onKey=(e)=>{ if(!STATE.boss) return; const key=e.key.toUpperCase(); if(Q.includes(key)||key===';'){ advance(key===seq[idx]); } };
+    function advance(ok){ if(ok){ idx++; sfx.good(); buzz([10]); ui.seq.children[idx-1].style.borderColor='#3ddc97'; } else { rage=Math.min(100,rage+25); ui.bossRage.style.width=rage+'%'; sfx.bad(); buzz([40]); shake(); }
+      if(idx>=seq.length){
+        ui.boss.close(); STATE.boss=false; STATE.chaos=10; STATE.score+=200; fxConfetti(); sfx.win(); bubble('Boss besiegt 🔥',1000); renderScene(); update(); window.removeEventListener('keydown', onKey); clearInterval(bt); return; }
+      if(rage>=100){ loseBoss(); }
+    }
+    function loseBoss(){ ui.boss.close(); sfx.lose(); STATE.alive=false; window.removeEventListener('keydown', onKey); clearInterval(bt); end(false); }
+    window.addEventListener('keydown', onKey);
+    const bt=setInterval(()=>{ if(!STATE.boss){clearInterval(bt);return;} rage=Math.min(100, rage+5); ui.bossRage.style.width=rage+'%'; if(rage>=100) loseBoss(); }, 700);
+    ui.bossGiveUp.onclick=()=>{ loseBoss(); };
+  }
+
+  function end(win){ clearInterval(STATE.tick); const survived=((Date.now()-STATE.started)/1000)|0; const best=parseInt(localStorage.getItem('lsBestTime')||'0',10); const hs=parseInt(localStorage.getItem('lsHighScore')||'0',10); if(survived>best) localStorage.setItem('lsBestTime', String(survived)); if(STATE.score>hs) localStorage.setItem('lsHighScore', String(STATE.score)); ui.bestTime.textContent = fmt(parseInt(localStorage.getItem('lsBestTime')||'0',10)); ui.bestScore.textContent = localStorage.getItem('lsHighScore')||'0'; ui.endTitle.textContent = win?'W':'L'; ui.endText.textContent = win? 'Chaos überlebt. Screenshot flexen.':'Laura hat dich zerstört. GG.'; (win?sfx.win:sfx.lose)(); buzz(win?[40,40,40]:[120,50,120]); ui.end.showModal(); }
+
+  function start(){ STATE.score=0; STATE.combo=1; STATE.comboProg=0; STATE.chaos=0; STATE.time=180; STATE.alive=true; STATE.boss=false; ui.logList.innerHTML=''; update(); renderScene(); clearInterval(STATE.tick); STATE.tick=setInterval(tick,1000); STATE.started=Date.now(); }
+
+  function bind(){
+    // Buttons
+    ui.restartBtn.addEventListener('click', start);
+    ui.helpBtn.addEventListener('click', ()=> ui.help.showModal());
+    ui.playAgain.addEventListener('click', ()=>{ ui.end.close(); start(); });
+
+    ui.soundBtn.addEventListener('click', ()=>{ if(!STATE.audio) initAudio(); STATE.sound=!STATE.sound; ui.soundBtn.setAttribute('aria-pressed', STATE.sound); ui.soundBtn.textContent = STATE.sound? '🔊 Sound':'🔈 Sound'; if(STATE.sound) sfx.click(); });
+    ui.hapticsBtn.addEventListener('click', ()=>{ STATE.haptics=!STATE.haptics; ui.hapticsBtn.setAttribute('aria-pressed', STATE.haptics); ui.hapticsBtn.textContent = STATE.haptics? '📳 Haptics':'📴 Haptics'; if(STATE.haptics) buzz([30]); });
+
+    // Shortcuts 1/2/3
+    window.addEventListener('keydown', (e)=>{
+      if(STATE.boss) return; const n=Number(e.key); if([1,2,3].includes(n)){ const btn=ui.choices.children[n-1]; if(btn) btn.click(); }
+    });
+
+    // Lazy audio resume on iOS
+    document.body.addEventListener('pointerdown', ()=>{ if(!STATE.audio && STATE.sound) initAudio(); }, {once:true});
+  }
+
+  // Boot
+  (function init(){ ui.bestTime.textContent = fmt(parseInt(localStorage.getItem('lsBestTime')||'0',10)); ui.bestScore.textContent = localStorage.getItem('lsHighScore')||'0'; bind(); start(); })();
+  </script>
+</body>
+</html>
